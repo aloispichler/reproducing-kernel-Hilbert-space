@@ -1,12 +1,12 @@
 """
 	RKHS struct – reproducing kernel Hilbert space
-	created: 2021, Mai
-    author©: Alois Pichler
+	created: 2021, May
+	author©: Alois Pichler
 """
 
 using SpecialFunctions, LinearAlgebra, Distributions
 
-#	│	RKHS: define the struct
+#	│	RKHS: define the struct: Reproducing Kernel Hilbert space
 #	╰────────────────────────────────────────────────────
 struct RKHS{T} 				# RKHS vector supported by T, describing the RKHS function
 	x::Vector{T}						# array of testpoints
@@ -32,8 +32,8 @@ function RKHSbyWeights(x::Vector{Float64}, weights, kernel= GaussKernel; fillGra
 		RKHS(x, weights, Gram(x, kernel), kernel)
 	else
 		RKHS(x, weights, Array{Float64}(undef, 0, 0), kernel)
-	end
-end
+end	end
+
 
 function RKHS(f0::RKHS; λ= 0.0, x= f0.x, kernel= f0.kernel)		#	λ-projection
 	GramM= Gram(x, kernel); n= length(f0.w)
@@ -72,8 +72,7 @@ function RKHS(f0, x::Vector{Float64}, D::UnivariateDistribution, kernel= GaussKe
 			tmp2= cdf(D, (x[i]+x[i+1])/ 2); p[i]= tmp2- tmp; tmp= tmp2
 		else
 			p[i]= 1.0- tmp
-		end
-	end
+	end end
 	RKHS(x, (λ*I+ Diagonal(p)*GramM)\ (Diagonal(p)* fx)* n, GramM, kernel)
 end
 
@@ -81,9 +80,9 @@ end
 #	│	clean the RKHS object
 #	╰────────────────────────────────────────────────────
 function clean(f::RKHS{T}; fillGram= true)::RKHS{T} where T
-	length(f.x) != length(f.w) && throw(DimensionMismatch("Support must match length of weights."))
+	length(f.x) == length(f.w) || throw(DimensionMismatch("Support must match length of weights."))
 	ind= sortperm(f.x);					# permutation of the sorted x
-	fw= f.w; if iszero(fw[ind[1]]); ind[1]= 0; end
+	fw= copy(f.w); if iszero(fw[ind[1]]); ind[1]= 0; end
 	for i = 2:length(fw)				# scan for duplicates
 		if ind[i-1] > 0 && f.x[ind[i]] == f.x[ind[i-1]]
 			fw[ind[i]]+= fw[ind[i-1]]	# move duplicate forward
@@ -91,29 +90,27 @@ function clean(f::RKHS{T}; fillGram= true)::RKHS{T} where T
 		end
 		if iszero(fw[ind[i]])			# weight 0 encountered
 			ind[i]= 0					# remove actual
-		end
-	end
+	end	end
 	ind= findall(!iszero, ind)			# remove now
 	if fillGram
 		if size(f.GramMatrix) == (length(f.x),length(f.x))
-			for (i,j) in findall(isnan.(GramMatrix[ind,ind]))
-				if i <= j; GramMatrix.data[i,j]= f.kernel(x[i], x[j]); end
+			for (i,j) in findall(isnan.(f.GramMatrix[ind,ind]))
+				if i <= j; f.GramMatrix.data[i,j]= f.kernel(x[i], x[j]); end
 			end
-			return RKHS(f.x[ind], fw[ind]* length(ind)/ length(f.w), Symmetric(GramMatrix[ind,ind]), f.kernel)
+			return RKHS(f.x[ind], fw[ind]* length(ind)/ length(f.w), Symmetric(f.GramMatrix[ind,ind]), f.kernel)
 		else
 			GramMatrix= Gram(f.x[ind], f.kernel)
 			return RKHS(f.x[ind], fw[ind]* length(ind)/ length(f.w), Symmetric(GramMatrix), f.kernel)
 		end
 	else
 		return RKHS(f.x[ind], fw[ind]* length(ind)/ length(f.w), Array{Float64}(undef, 0, 0), f.kernel)
-	end
-end
+end	end
 
 #	│	- (minus) operation
 #	╰────────────────────────────────────────────────────
 function Base.:-(f1::RKHS, f2::RKHS)::RKHS		# minus operation
-	@assert f1.kernel == f2.kernel [text] "RKHS - (minus): the kernel functions differ"
-	n1= length(f1.w); f2= length(f2.w)
+	f1.kernel == f2.kernel || throw(ArgumentError("RKHS - (minus): the kernel functions differ"))
+	n1= length(f1.w); n2= length(f2.w)
 	if length(f1.GramMatrix) > 0 || length(f2.GramMatrix) > 0
 		GramM= Fill(NaN, n1+n2, n1+n2)
 		if length(f1.GramMatrix)> 0; GramM[1:n1,1:n1]= f1.GramMatrix; end
@@ -121,8 +118,7 @@ function Base.:-(f1::RKHS, f2::RKHS)::RKHS		# minus operation
 		return RKHS([f1.x;f2.x], [(n1+n2)*f1.w/n1;-(n1+n2)*f2.w/n2], GramM, f1.kernel)
 	else
 		return RKHS([f1.x;f2.x], [(n1+n2)*f1.w/n1;-(n1+n2)*f2.w/n2], Array{Float64}(undef,0,0), f1.kernel)
-	end
-end
+end	end
 
 #	│	inner product of RKHS functions
 #	╰────────────────────────────────────────────────────
@@ -139,8 +135,7 @@ function RKHSinner(f1::RKHS, f2::RKHS)
 	else		#	the kernels differ
 		@error "RKHSinner: the kernel functions differ." maxlog= 1
 		return NaN
-	end
-end
+end	end
 
 #	│	RKHS norm
 #	╰────────────────────────────────────────────────────
