@@ -17,12 +17,12 @@ end
 
 #	│	evaluate the RKHS function f at all x: functor
 #	╰────────────────────────────────────────────────────
-function (fRKHS::RKHS)(x::T) where T	# callable functor
+function (f::RKHS)(x::T) where T	# callable functor
 	fx= 0.0
-	for j= 1:length(fRKHS.w)
-		fx+= fRKHS.w[j]* fRKHS.kernel(x, fRKHS.x[j])
+	for j= 1:length(f.w)			# evaluate the kernel
+		fx+= f.w[j]* f.kernel(x, f.x[j])
 	end
-	return fx/ length(fRKHS.w)
+	return fx/ length(f.w)
 end
 
 #	│	outer constructors
@@ -84,9 +84,9 @@ function RKHSclean(f::RKHS{T}; fillGram= true)::RKHS{T} where T
 	ind= sortperm(f.x);					# permutation of the sorted x
 	fw= copy(f.w);						# don't alter the weights vector
 	if iszero(fw[ind[1]]); ind[1]= 0; end
-	for i = 2:length(fw)				# scan for duplicates
+	for i = 2:length(fw)				# scan for duplicates and removeables
 		if ind[i-1] > 0 && f.x[ind[i]] == f.x[ind[i-1]]
-			fw[ind[i]]+= fw[ind[i-1]]	# move duplicate forward
+			fw[ind[i]]+= fw[ind[i-1]]	# roll forward the weitht of duplicate
 			ind[i-1]= 0					# remove duplicate predecessor
 		end
 		if iszero(fw[ind[i]])			# weight 0 encountered
@@ -97,9 +97,12 @@ function RKHSclean(f::RKHS{T}; fillGram= true)::RKHS{T} where T
 		if size(f.GramMatrix) == (length(f.x),length(f.x))
 			for i in ind
 				for j in ind
-					if isnan(f.GramMatrix[i,j])
-						f.GramMatrix[i,j]= f.kernel(f.x[i], f.x[j])
-			end	end	end
+					if isnan(f.GramMatrix[i,j])			# provide missing entry
+						if isnan(f.GramMatrix[j,i])		# employ symmetry
+							f.GramMatrix[i,j]= f.GramMatrix[j,i]= f.kernel(f.x[i], f.x[j])
+						else
+							f.GramMatrix[i,j]= f.GramMatrix[j,i]
+			end	end	end	end
 			return RKHS(f.x[ind], fw[ind]* length(ind)/ length(f.w), Symmetric(f.GramMatrix[ind,ind]), f.kernel)
 		else
 			GramMatrix= Gram(f.x[ind], f.kernel)
@@ -115,12 +118,12 @@ function Base.:-(f1::RKHS, f2::RKHS)::RKHS		# minus operation
 	f1.kernel == f2.kernel || throw(ArgumentError("RKHS - (minus): the kernel functions differ"))
 	n1= length(f1.w); n2= length(f2.w)
 	if length(f1.GramMatrix) > 0 || length(f2.GramMatrix) > 0
-		GramM= fill(NaN, n1+n2, n1+n2)
+		GramM= fill(NaN, n1+n2, n1+n2)			# fill with NaN
 		if length(f1.GramMatrix)> 0; GramM[1:n1,1:n1]= f1.GramMatrix; end
 		if length(f2.GramMatrix)> 0; GramM[n1+1:n1+n2,n1+1:n1+n2]= f2.GramMatrix; end
-		return RKHS([f1.x;f2.x], [(n1+n2)*f1.w/n1;-(n1+n2)*f2.w/n2], GramM, f1.kernel)
+		return RKHS([f1.x;f2.x], [(n1+n2)*f1.w/n1; -(n1+n2)*f2.w/n2], GramM, f1.kernel)
 	else
-		return RKHS([f1.x;f2.x], [(n1+n2)*f1.w/n1;-(n1+n2)*f2.w/n2], Array{Float64}(undef,0,0), f1.kernel)
+		return RKHS([f1.x;f2.x], [(n1+n2)*f1.w/n1; -(n1+n2)*f2.w/n2], Array{Float64}(undef,0,0), f1.kernel)
 end	end
 
 #	│	inner product of RKHS functions
@@ -143,29 +146,8 @@ end	end
 #	│	RKHS norm
 #	╰────────────────────────────────────────────────────
 function RKHSnorm(f::RKHS)
-	ftmp= RKHSclean(f; fillGram= true)
+	ftmp= RKHSclean(f; fillGram= true)	# square root of the innter product
 	sqrt(ftmp.w'* ftmp.GramMatrix* ftmp.w/ length(ftmp.w)/ length(ftmp.w))
-end
-
-function RKHSnorm(f1::RKHS, f2::RKHS)
-	n1= length(f1.w); n2= length(f2.w)
-	GramM= Array{Float64}(undef, n1+n2, n1+n2)
-	if (n1,n1) == size(f1.GramMatrix)	#	add the Gram matrix
-		GramM[1:n1, 1:n1]= f1.GramMatrix
-	else
-		GramM[1:n1, 1:n1]= Gram(f1.x, f1.kernel)
-	end
-	if (n2,n2) == size(f2.GramMatrix)	#	add the Gram matrix
-		GramM[n1+1:n1+n2, n1+1:n1+n2]= f2.GramMatrix
-	else 
-		GramM[n1+1:n1+n2, n1+1:n1+n2]= Gram(f2.x, f2.kernel)
-	end
-	for i= 1:n1
-		for j= 1:n2
-			GramM[i,n1+j]= GramM[j+n1,i]= f1.kernel(f1.x[i,:], f2.x[j,:])
-	end; end
-	weights= [f1.w/ length(f1.w); -f2.w/ length(f2.w)]	#	the RKHS funciton f1-f2
-	sqrt(weights'*GramM* weights)
 end
 
 #	Gram matrix
@@ -178,7 +160,7 @@ function Gram(ξ::Vector{T}, kernel) where T
 	return GramMatrix
 end
 
-#	│	Here are some Kernel functions
+#	│	finally some Kernel functions
 #	╰────────────────────────────────────────────────────
 function LaplaceKernel(x, y; ℓ=1.)	#	Laplace covariance
 	return exp(-norm(y-x)/ ℓ)
