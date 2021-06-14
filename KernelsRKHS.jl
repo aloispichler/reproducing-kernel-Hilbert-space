@@ -48,11 +48,11 @@ end
 
 function RKHS(x::Vector{T}; kernel= GaussKernel)::RKHS{T} where T	#	Gaussian random field
 	GramM= Gram(x, kernel)
-	RKHS(x, rand(Distributions.MvNormalCanon( 0.0000001I+ GramM)), GramM, kernel)
+	RKHS(x, length(x)* rand(Distributions.MvNormalCanon( 0.0000001I+ GramM)), GramM, kernel)
 end
 
 function RKHS(f0, nPoints::Int64, distD::UnivariateDistribution, kernel= GaussKernel; λ= 0.0)	# employ a distribution
-	RKHS(f0, unique!(quantile(distD, range(1/2.0/nPoints, 1-1/2.0/nPoints, length= nPoints))), distD, kernel; λ=λ)
+	RKHS(f0, quantile(distD, range(1/2.0/nPoints, 1-1/2.0/nPoints, length= nPoints)), distD, kernel; λ=λ)
 	# 	x= unique!(quantile(distD, range(1/2.0/nPoints, 1-1/2.0/nPoints, length= nPoints)))		# clever choice of sample points :-)
 	# 	GramM= Gram(x, kernel); nPoints= length(x)
 	# 	RKHS(x[:,:], (λ*I+ GramM/ n)\ f0.(x), GramM, kernel)
@@ -107,6 +107,20 @@ function RKHSclean(f::RKHS{T}; fillGram= true)::RKHS{T} where T
 		end
 	else	# don't fill the matrix
 		return RKHS(f.x[ind], fw[ind]* length(ind)/ length(f.w), Array{Float64}(undef, 0, 0), f.kernel)
+end	end
+
+#	│	+ (minus) operation
+#	╰────────────────────────────────────────────────────
+function Base.:+(f1::RKHS{T}, f2::RKHS{T})::RKHS{T} where T		# minus operation
+	f1.kernel == f2.kernel || throw(ArgumentError("RKHS - (minus): the kernel functions differ"))
+	n1= length(f1.w); n2= length(f2.w)
+	if length(f1.GramMatrix) > 0 || length(f2.GramMatrix) > 0
+		GramM= fill(NaN, n1+n2, n1+n2)			# fill with NaN
+		if length(f1.GramMatrix)== n1; GramM[1:n1,1:n1]= f1.GramMatrix; end				# rescue old
+		if length(f2.GramMatrix)== n2; GramM[n1+1:n1+n2,n1+1:n1+n2]= f2.GramMatrix; end	# rescue old
+		return RKHS([f1.x;f2.x], [(n1+n2)*f1.w/n1; +(n1+n2)*f2.w/n2], GramM, f1.kernel)
+	else
+		return RKHS([f1.x;f2.x], [(n1+n2)*f1.w/n1; +(n1+n2)*f2.w/n2], Array{Float64}(undef,0,0), f1.kernel)
 end	end
 
 #	│	- (minus) operation
@@ -169,17 +183,16 @@ function MaternKernel(x, y; ℓ=1., ν=1.5)	# Matérn covariance
 end
 
 function SigmoidKernel(x, y; ℓ=1.)	#	Sigmoid kernel
-	return 1/(exp(norm(y-x)/ ℓ) + exp(-norm(y-x)/ ℓ))
+	return 2/(exp(norm(y-x)/ ℓ) + exp(-norm(y-x)/ ℓ))
 end
 
 function GaussKernel(x, y; ℓ=1.)	#	Gauss kernel
 	return exp(-(norm(y-x)/ ℓ)^2)
 end
 
-function BrownianKernel(x, y; ℓ=1.)	#	Wiener process
-	HurstH= 0.5						#	fractional Brownian motion
+function BrownianKernel(x, y; HurstH=.5)	#	Wiener process
 	return (x.^(2*HurstH)+ y.^(2*HurstH)- abs.(x.-y).^(2*HurstH))/2
-#	return min.(x,y)[1]
+#	return min.(x,y)[1]			#	fractional Brownian motion
 end
 
 function BrownianBridge(x, y; ℓ=1.)	#	Brownian bridge
