@@ -7,7 +7,7 @@
 using SpecialFunctions, LinearAlgebra, Distributions
 
 #	│	RKHS: define the struct: Reproducing Kernel Hilbert space
-#	╰────────────────────────────────────────────────────
+#	╰───────────────────────────────────────────────────────────────
 struct RKHS{T} 				# RKHS vector supported by T, describing the RKHS function
 	x::Vector{T}						# array of testpoints
 	w::Vector{Float64}					# corresponding weights
@@ -17,11 +17,11 @@ end
 
 #	│	functor to evaluate the RKHS function f at x
 #	╰────────────────────────────────────────────────────
-function (f::RKHS{T})(x::T) where T	# callable functor
+function (f::RKHS{T})(x::T) where T		# callable struct
 	length(f.x) == length(f.w) || throw(DimensionMismatch("Support must match length of weights."))
 	length(f.w) > 0 || return 0.0		# manage zero element
 	fx= 0.0
-	for j= 1:length(f.w)				# evaluate the kernel at x
+	for j= 1:length(f.w)				# evaluate the RKHS-vector at x
 		fx+= f.w[j]* f.kernel(x, f.x[j])
 	end
 	return fx/ length(f.w)
@@ -109,10 +109,10 @@ function RKHSclean(f::RKHS{T}; fillGram= true)::RKHS{T} where T
 		return RKHS(f.x[ind], fw[ind]* length(ind)/ length(f.w), Array{Float64}(undef, 0, 0), f.kernel)
 end	end
 
-#	│	+ (minus) operation
+#	│	+ (plus) operation
 #	╰────────────────────────────────────────────────────
 function Base.:+(f1::RKHS{T}, f2::RKHS{T})::RKHS{T} where T		# minus operation
-	f1.kernel == f2.kernel || throw(ArgumentError("RKHS - (minus): the kernel functions differ"))
+	f1.kernel == f2.kernel || throw(ArgumentError("RKHS (plus): the kernel functions differ"))
 	n1= length(f1.w); n2= length(f2.w)
 	if length(f1.GramMatrix) > 0 || length(f2.GramMatrix) > 0
 		GramM= fill(NaN, n1+n2, n1+n2)			# fill with NaN
@@ -126,7 +126,7 @@ end	end
 #	│	- (minus) operation
 #	╰────────────────────────────────────────────────────
 function Base.:-(f1::RKHS{T}, f2::RKHS{T})::RKHS{T} where T		# minus operation
-	f1.kernel == f2.kernel || throw(ArgumentError("RKHS - (minus): the kernel functions differ"))
+	f1.kernel == f2.kernel || throw(ArgumentError("RKHS (minus): the kernel functions differ"))
 	n1= length(f1.w); n2= length(f2.w)
 	if length(f1.GramMatrix) > 0 || length(f2.GramMatrix) > 0
 		GramM= fill(NaN, n1+n2, n1+n2)			# fill with NaN

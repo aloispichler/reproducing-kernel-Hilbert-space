@@ -8,9 +8,9 @@ using Gnuplot; Gnuplot.options.gpviewer= true;	# external viewer
 include("KernelsRKHS.jl")
 
 function Kernel(x, y)
-#	MaternKernel(x,y; ℓ= .1, ν= 0.5)
-	GaussKernel(x,y; ℓ= .1)
-#	SigmoidKernel(x,y; ℓ= .2)
+	MaternKernel(x,y; ℓ= .1, ν= 1.5)
+#	GaussKernel(x,y; ℓ= .1)
+#	SigmoidKernel(x,y; ℓ= .1)
 end
 
 
